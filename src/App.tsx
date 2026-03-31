@@ -71,7 +71,7 @@ function RaffleApp() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       // Check if user is the admin email provided in context
-      if (user && user.email === 'georgeoughotmart@gmail.com' && user.emailVerified) {
+      if (user && user.email === 'georgeoughotmart@gmail.com') {
         setIsAdmin(true);
       } else {
         setIsAdmin(false);
@@ -333,9 +333,12 @@ function RaffleApp() {
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      console.log("Iniciando login com Google...");
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log("Login bem-sucedido:", result.user.email);
       setShowAdminLogin(false);
     } catch (error) {
+      console.error("Erro ao fazer login:", error);
       alert("Erro ao fazer login: " + (error as Error).message);
     }
   };
