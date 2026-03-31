@@ -45,8 +45,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "georgeoughotmart@gmail.com"));
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email.lower() == "georgeoughotmart@gmail.com"));
     }
 
     function isValidConfig(data) {
@@ -58,15 +59,15 @@ service cloud.firestore {
     }
 
     function isValidState(data) {
-      return data.sorteados is list &&
-             (!('ultimoSorteado' in data) || data.ultimoSorteado is number) &&
-             data.takenNumbers is list;
+      return (('sorteados' in data && data.sorteados is list) || !('sorteados' in data)) &&
+             (('ultimoSorteado' in data && data.ultimoSorteado is number) || !('ultimoSorteado' in data)) &&
+             (('takenNumbers' in data && data.takenNumbers is list) || !('takenNumbers' in data));
     }
 
     function isValidReservation(data) {
       return data.numero is number &&
-             data.nome is string && data.nome.size() > 0 && data.nome.size() < 100 &&
-             data.telefone is string && data.telefone.size() > 0 && data.telefone.size() < 30 &&
+             data.nome is string && data.nome.size() > 0 && data.nome.size() < 200 &&
+             data.telefone is string && data.telefone.size() > 0 && data.telefone.size() < 50 &&
              data.timestamp is number;
     }
 
@@ -85,7 +86,8 @@ service cloud.firestore {
     match /raffle/state {
       allow read: if true;
       allow write: if (isAdmin() && isValidState(request.resource.data)) || 
-                     (isValidState(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['takenNumbers']));
+                     (isValidState(request.resource.data) && 
+                      (resource == null || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['takenNumbers'])));
     }
 
     match /reservas/{reservaId} {

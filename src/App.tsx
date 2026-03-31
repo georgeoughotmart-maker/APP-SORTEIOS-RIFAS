@@ -77,17 +77,20 @@ function RaffleApp() {
       }
     }).catch((error) => {
       console.error("Erro no resultado do redirecionamento:", error);
+      setError("Erro no login via redirecionamento: " + error.message);
     });
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       console.log("Estado de autenticação mudou:", user ? user.email : "Deslogado");
       setUser(user);
-      // Check if user is the admin email provided in context
-      if (user && user.email && user.email.trim().toLowerCase() === 'georgeoughotmart@gmail.com') {
-        console.log("Usuário identificado como ADMIN");
-        setIsAdmin(true);
+      
+      if (user && user.email) {
+        const email = user.email.trim().toLowerCase();
+        const adminEmail = 'georgeoughotmart@gmail.com';
+        const isAdminUser = email === adminEmail;
+        console.log(`Verificando admin: ${email} === ${adminEmail} -> ${isAdminUser}`);
+        setIsAdmin(isAdminUser);
       } else {
-        if (user) console.log("Usuário NÃO é admin:", user.email);
         setIsAdmin(false);
       }
       setIsAuthReady(true);
@@ -112,6 +115,16 @@ function RaffleApp() {
         if (data.isSorteioIniciado) {
           setNumeros(Array.from({ length: data.totalNumeros }, (_, i) => i + 1));
         }
+      } else if (isAdmin) {
+        // Initialize if missing
+        console.log("Inicializando raffle/config...");
+        setDoc(doc(db, 'raffle', 'config'), {
+          totalNumeros: 100,
+          brinde: '',
+          valor: '',
+          imagemBase64: '',
+          isSorteioIniciado: false
+        }).catch(e => console.error("Erro ao inicializar config:", e));
       }
     }, (err) => {
       try { handleFirestoreError(err, OperationType.GET, 'raffle/config'); }
@@ -125,6 +138,14 @@ function RaffleApp() {
         setSorteados(data.sorteados || []);
         setTakenNumbers(data.takenNumbers || []);
         setUltimoSorteado(data.ultimoSorteado || null);
+      } else if (isAdmin) {
+        // Initialize if missing
+        console.log("Inicializando raffle/state...");
+        setDoc(doc(db, 'raffle', 'state'), {
+          sorteados: [],
+          ultimoSorteado: null,
+          takenNumbers: []
+        }).catch(e => console.error("Erro ao inicializar state:", e));
       }
     }, (err) => {
       try { handleFirestoreError(err, OperationType.GET, 'raffle/state'); }
@@ -135,6 +156,7 @@ function RaffleApp() {
     let unsubReservas = () => {};
     if (isAdmin) {
       unsubReservas = onSnapshot(collection(db, 'reservas'), (snapshot) => {
+        console.log("Reservas atualizadas:", snapshot.size, "documentos");
         const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Reserva));
         setReservas(docs);
       }, (err) => {
@@ -190,21 +212,40 @@ function RaffleApp() {
     }
 
     try {
+      setError(null);
+      console.log("Iniciando/Atualizando sorteio...");
+      
       await setDoc(doc(db, 'raffle', 'config'), {
         totalNumeros,
         brinde,
         valor,
         imagemBase64,
         isSorteioIniciado: true
-      });
-      // Reset state on new raffle
-      await setDoc(doc(db, 'raffle', 'state'), {
-        sorteados: [],
-        ultimoSorteado: null,
-        takenNumbers: []
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'raffle/config');
+      }, { merge: true });
+      
+      // Only reset state if it's a completely new raffle (no taken numbers)
+      // or if the admin explicitly wants to reset (we can add a separate reset button)
+      if (!isSorteioIniciado) {
+        console.log("Primeira inicialização do estado...");
+        await setDoc(doc(db, 'raffle', 'state'), {
+          sorteados: [],
+          ultimoSorteado: null,
+          takenNumbers: []
+        }, { merge: true });
+      } else {
+        console.log("Configurações atualizadas sem resetar o estado.");
+      }
+      
+      alert("Configurações salvas com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao iniciar sorteio:", error);
+      try {
+        handleFirestoreError(error, OperationType.WRITE, 'raffle/config');
+      } catch (e: any) {
+        const errObj = JSON.parse(e.message);
+        setError(`Erro ao salvar config: ${errObj.error}`);
+        alert(`Erro ao salvar config: ${errObj.error}`);
+      }
     }
   };
 
@@ -266,6 +307,10 @@ function RaffleApp() {
     }
 
     try {
+      setError(null);
+      console.log("Iniciando reserva do número:", numeroSelecionado, { nome: nomeReserva, telefone: telefoneReserva });
+      
+      // 1. Create the reservation document
       await addDoc(collection(db, 'reservas'), {
         numero: numeroSelecionado,
         nome: nomeReserva,
@@ -273,16 +318,28 @@ function RaffleApp() {
         timestamp: Date.now()
       });
       
-      // Update takenNumbers in raffle/state using arrayUnion for safety
-      await updateDoc(doc(db, 'raffle', 'state'), { 
+      console.log("Documento de reserva criado com sucesso");
+
+      // 2. Update takenNumbers in raffle/state using setDoc with merge for safety (in case doc doesn't exist)
+      await setDoc(doc(db, 'raffle', 'state'), { 
         takenNumbers: arrayUnion(numeroSelecionado) 
-      });
+      }, { merge: true });
+
+      console.log("Estado da rifa atualizado com sucesso");
 
       setNumeroSelecionado(null);
       setNomeReserva('');
       setTelefoneReserva('');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'reservas');
+      alert("Reserva realizada com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao reservar número:", error);
+      try { 
+        handleFirestoreError(error, OperationType.CREATE, 'reservas'); 
+      } catch (e: any) {
+        const errObj = JSON.parse(e.message);
+        setError(`Erro ao salvar: ${errObj.error}`);
+        alert(`Erro ao salvar: ${errObj.error}`);
+      }
     }
   };
 
