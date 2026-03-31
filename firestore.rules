@@ -1,0 +1,107 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: raffle
+// Document: config
+// Fields:
+//   - totalNumeros: number (required)
+//   - brinde: string (optional)
+//   - valor: string (optional)
+//   - imagemBase64: string (optional)
+//   - isSorteioIniciado: bool (required)
+//
+// Document: state
+// Fields:
+//   - sorteados: list of numbers
+//   - ultimoSorteado: number
+//   - takenNumbers: list of numbers (public list of reserved numbers)
+//
+// Collection: reservas
+// Document ID: auto-generated
+// Fields:
+//   - numero: number (required)
+//   - nome: string (required, max 100 chars)
+//   - telefone: string (required, max 20 chars)
+//   - timestamp: number (required)
+//
+// Collection: ganhadores
+// Document ID: auto-generated
+// Fields:
+//   - numero: string (required)
+//   - nome: string (required)
+//   - timestamp: number (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "georgeoughotmart@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidConfig(data) {
+      return data.totalNumeros is number && data.totalNumeros >= 10 && data.totalNumeros <= 500 &&
+             data.isSorteioIniciado is bool &&
+             (!('brinde' in data) || (data.brinde is string && data.brinde.size() < 200)) &&
+             (!('valor' in data) || (data.valor is string && data.valor.size() < 50)) &&
+             (!('imagemBase64' in data) || (data.imagemBase64 is string && data.imagemBase64.size() < 1048576));
+    }
+
+    function isValidState(data) {
+      return data.sorteados is list &&
+             (!('ultimoSorteado' in data) || data.ultimoSorteado is number) &&
+             data.takenNumbers is list;
+    }
+
+    function isValidReservation(data) {
+      return data.numero is number &&
+             data.nome is string && data.nome.size() > 0 && data.nome.size() < 100 &&
+             data.telefone is string && data.telefone.size() > 0 && data.telefone.size() < 30 &&
+             data.timestamp is number;
+    }
+
+    function isValidWinner(data) {
+      return data.numero is string &&
+             data.nome is string && data.nome.size() > 0 && data.nome.size() < 100 &&
+             data.timestamp is number;
+    }
+
+    // Rules
+    match /raffle/config {
+      allow read: if true;
+      allow write: if isAdmin() && isValidConfig(request.resource.data);
+    }
+
+    match /raffle/state {
+      allow read: if true;
+      allow write: if (isAdmin() && isValidState(request.resource.data)) || 
+                     (isValidState(request.resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['takenNumbers']));
+    }
+
+    match /reservas/{reservaId} {
+      allow read: if isAdmin();
+      allow create: if isValidReservation(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /ganhadores/{ganhadorId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidWinner(request.resource.data);
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+  }
+}

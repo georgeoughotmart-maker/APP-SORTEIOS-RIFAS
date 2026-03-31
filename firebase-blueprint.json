@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "RaffleConfig": {
+      "title": "Configuração do Sorteio",
+      "description": "Configurações globais do sorteio e prêmio",
+      "type": "object",
+      "properties": {
+        "totalNumeros": { "type": "number" },
+        "brinde": { "type": "string" },
+        "valor": { "type": "string" },
+        "imagemBase64": { "type": "string" },
+        "isSorteioIniciado": { "type": "boolean" }
+      },
+      "required": ["totalNumeros", "isSorteioIniciado"]
+    },
+    "RaffleState": {
+      "title": "Estado do Sorteio",
+      "description": "Números sorteados e último resultado",
+      "type": "object",
+      "properties": {
+        "sorteados": { "type": "array", "items": { "type": "number" } },
+        "ultimoSorteado": { "type": "number" },
+        "takenNumbers": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "Reservation": {
+      "title": "Reserva",
+      "description": "Informações de reserva de um número",
+      "type": "object",
+      "properties": {
+        "numero": { "type": "number" },
+        "nome": { "type": "string" },
+        "telefone": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["numero", "nome", "telefone", "timestamp"]
+    },
+    "Winner": {
+      "title": "Ganhador",
+      "description": "Registro de ganhador do sorteio",
+      "type": "object",
+      "properties": {
+        "numero": { "type": "string" },
+        "nome": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["numero", "nome", "timestamp"]
+    }
+  },
+  "firestore": {
+    "raffle/config": {
+      "schema": "RaffleConfig",
+      "description": "Documento único de configuração"
+    },
+    "raffle/state": {
+      "schema": "RaffleState",
+      "description": "Documento único de estado do sorteio"
+    },
+    "reservas": {
+      "schema": "Reservation",
+      "description": "Coleção de reservas"
+    },
+    "ganhadores": {
+      "schema": "Winner",
+      "description": "Coleção de ganhadores"
+    }
+  }
+}

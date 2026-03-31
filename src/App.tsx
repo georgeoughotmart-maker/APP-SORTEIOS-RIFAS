@@ -3,24 +3,41 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Trophy, User, Hash, Image as ImageIcon, Play, RotateCcw, Save, Trash2, Gift, DollarSign, Grid, Lock, Eye, EyeOff, Phone } from 'lucide-react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
+import { Trophy, User, Hash, Image as ImageIcon, Play, RotateCcw, Save, Trash2, Gift, DollarSign, Grid, Lock, Eye, EyeOff, Phone, LogIn, LogOut, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
+  doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, query, orderBy,
+  OperationType, handleFirestoreError 
+} from './firebase';
 
 interface Ganhador {
   numero: string;
   nome: string;
-  id: number;
+  id: string;
+  timestamp: number;
 }
 
 interface Reserva {
   numero: number;
   nome: string;
   telefone: string;
-  id: number;
+  id: string;
 }
 
 export default function App() {
+  return <RaffleApp />;
+}
+
+function RaffleApp() {
+  // Auth State
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
   // Configuration State
   const [totalNumeros, setTotalNumeros] = useState<number>(100);
   const [brinde, setBrinde] = useState<string>('');
@@ -30,6 +47,7 @@ export default function App() {
   // Raffle State
   const [numeros, setNumeros] = useState<number[]>([]);
   const [sorteados, setSorteados] = useState<number[]>([]);
+  const [takenNumbers, setTakenNumbers] = useState<number[]>([]);
   const [ultimoSorteado, setUltimoSorteado] = useState<number | null>(null);
   const [isSorteioIniciado, setIsSorteioIniciado] = useState<boolean>(false);
   
@@ -44,113 +62,140 @@ export default function App() {
   const [nomeReserva, setNomeReserva] = useState<string>('');
   const [telefoneReserva, setTelefoneReserva] = useState<string>('');
   
-  // Admin Mode
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [adminPassword, setAdminPassword] = useState<string>('');
+  // Admin Login UI
   const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
 
-  // Load from localStorage on mount
+  // Auth Listener
   useEffect(() => {
-    const savedGanhadores = localStorage.getItem('ganhadores');
-    if (savedGanhadores) setGanhadores(JSON.parse(savedGanhadores));
-    
-    const savedImagem = localStorage.getItem('imagem');
-    if (savedImagem) setImagemBase64(savedImagem);
-
-    const savedReservas = localStorage.getItem('reservas');
-    if (savedReservas) setReservas(JSON.parse(savedReservas));
-
-    const savedBrinde = localStorage.getItem('brinde');
-    if (savedBrinde) setBrinde(savedBrinde);
-
-    const savedValor = localStorage.getItem('valor');
-    if (savedValor) setValor(savedValor);
-
-    const savedSorteados = localStorage.getItem('sorteados');
-    if (savedSorteados) setSorteados(JSON.parse(savedSorteados));
-
-    const savedUltimo = localStorage.getItem('ultimoSorteado');
-    if (savedUltimo) setUltimoSorteado(parseInt(savedUltimo));
-
-    const savedTotal = localStorage.getItem('totalNumeros');
-    if (savedTotal) {
-      const total = parseInt(savedTotal);
-      setTotalNumeros(total);
-      setNumeros(Array.from({ length: total }, (_, i) => i + 1));
-      setIsSorteioIniciado(true);
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      // Check if user is the admin email provided in context
+      if (user && user.email === 'georgeoughotmart@gmail.com' && user.emailVerified) {
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
   }, []);
 
-  // Save to localStorage
+  // Firestore Listeners
   useEffect(() => {
-    localStorage.setItem('ganhadores', JSON.stringify(ganhadores));
-  }, [ganhadores]);
+    if (!isAuthReady) return;
 
-  useEffect(() => {
-    localStorage.setItem('reservas', JSON.stringify(reservas));
-  }, [reservas]);
+    // 1. Raffle Config
+    const unsubConfig = onSnapshot(doc(db, 'raffle', 'config'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setTotalNumeros(data.totalNumeros || 100);
+        setBrinde(data.brinde || '');
+        setValor(data.valor || '');
+        setImagemBase64(data.imagemBase64 || '');
+        setIsSorteioIniciado(data.isSorteioIniciado || false);
+        
+        if (data.isSorteioIniciado) {
+          setNumeros(Array.from({ length: data.totalNumeros }, (_, i) => i + 1));
+        }
+      }
+    }, (err) => {
+      try { handleFirestoreError(err, OperationType.GET, 'raffle/config'); }
+      catch (e: any) { setError(JSON.parse(e.message).error); }
+    });
 
-  useEffect(() => {
-    localStorage.setItem('brinde', brinde);
-  }, [brinde]);
+    // 2. Raffle State
+    const unsubState = onSnapshot(doc(db, 'raffle', 'state'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setSorteados(data.sorteados || []);
+        setTakenNumbers(data.takenNumbers || []);
+        setUltimoSorteado(data.ultimoSorteado || null);
+      }
+    }, (err) => {
+      try { handleFirestoreError(err, OperationType.GET, 'raffle/state'); }
+      catch (e: any) { setError(JSON.parse(e.message).error); }
+    });
 
-  useEffect(() => {
-    localStorage.setItem('valor', valor);
-  }, [valor]);
-
-  useEffect(() => {
-    localStorage.setItem('sorteados', JSON.stringify(sorteados));
-  }, [sorteados]);
-
-  useEffect(() => {
-    if (ultimoSorteado !== null) {
-      localStorage.setItem('ultimoSorteado', ultimoSorteado.toString());
+    // 3. Reservations (Admin Only)
+    let unsubReservas = () => {};
+    if (isAdmin) {
+      unsubReservas = onSnapshot(collection(db, 'reservas'), (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Reserva));
+        setReservas(docs);
+      }, (err) => {
+        try { handleFirestoreError(err, OperationType.GET, 'reservas'); }
+        catch (e: any) { setError(JSON.parse(e.message).error); }
+      });
     } else {
-      localStorage.removeItem('ultimoSorteado');
+      setReservas([]); // Clear for non-admins
     }
-  }, [ultimoSorteado]);
 
-  useEffect(() => {
-    if (isSorteioIniciado) {
-      localStorage.setItem('totalNumeros', totalNumeros.toString());
-    }
-  }, [totalNumeros, isSorteioIniciado]);
+    // 4. Winners
+    const q = query(collection(db, 'ganhadores'), orderBy('timestamp', 'desc'));
+    const unsubGanhadores = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Ganhador));
+      setGanhadores(docs);
+    }, (err) => {
+      try { handleFirestoreError(err, OperationType.GET, 'ganhadores'); }
+      catch (e: any) { setError(JSON.parse(e.message).error); }
+    });
 
-  const carregarImagem = (e: React.ChangeEvent<HTMLInputElement>) => {
+    return () => {
+      unsubConfig();
+      unsubState();
+      unsubReservas();
+      unsubGanhadores();
+    };
+  }, [isAuthReady]);
+
+  const carregarImagem = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const base64 = evt.target?.result as string;
       setImagemBase64(base64);
-      localStorage.setItem('imagem', base64);
+      if (isAdmin) {
+        try {
+          await setDoc(doc(db, 'raffle', 'config'), { imagemBase64: base64 }, { merge: true });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, 'raffle/config');
+        }
+      }
     };
     reader.readAsDataURL(file);
   };
 
-  const iniciarSorteio = () => {
+  const iniciarSorteio = async () => {
+    if (!isAdmin) return;
     if (isNaN(totalNumeros) || totalNumeros < 10 || totalNumeros > 500) {
       alert("Escolha entre 10 e 500 números");
       return;
     }
 
-    const novosNumeros = Array.from({ length: totalNumeros }, (_, i) => i + 1);
-    setNumeros(novosNumeros);
-    setSorteados([]);
-    setUltimoSorteado(null);
-    setIsSorteioIniciado(true);
+    try {
+      await setDoc(doc(db, 'raffle', 'config'), {
+        totalNumeros,
+        brinde,
+        valor,
+        imagemBase64,
+        isSorteioIniciado: true
+      });
+      // Reset state on new raffle
+      await setDoc(doc(db, 'raffle', 'state'), {
+        sorteados: [],
+        ultimoSorteado: null,
+        takenNumbers: []
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'raffle/config');
+    }
   };
 
-  const sortear = () => {
-    if (!isSorteioIniciado) {
-      alert("Inicie o sorteio primeiro!");
-      return;
-    }
+  const sortear = async () => {
+    if (!isAdmin || !isSorteioIniciado) return;
 
-    // Draw only from reserved numbers? Or any? 
-    // User asked "only I can see the chosen numbers", implying we draw from the pool.
-    // Let's draw from the reserved numbers if any exist, otherwise from all.
     const pool = reservas.length > 0 
       ? reservas.map(r => r.numero).filter(n => !sorteados.includes(n))
       : numeros.filter(n => !sorteados.includes(n));
@@ -161,102 +206,196 @@ export default function App() {
     }
 
     const num = pool[Math.floor(Math.random() * pool.length)];
-    setSorteados(prev => [...prev, num]);
-    setUltimoSorteado(num);
+    const novosSorteados = [...sorteados, num];
 
-    // Auto-fill winner if reserved
-    const reserva = reservas.find(r => r.numero === num);
-    if (reserva) {
-      setNumeroGanhador(num.toString());
-      setNomeGanhador(reserva.nome);
+    try {
+      await setDoc(doc(db, 'raffle', 'state'), {
+        sorteados: novosSorteados,
+        ultimoSorteado: num
+      });
+
+      // Auto-fill winner if reserved
+      const reserva = reservas.find(r => r.numero === num);
+      if (reserva) {
+        setNumeroGanhador(num.toString());
+        setNomeGanhador(reserva.nome);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'raffle/state');
     }
   };
 
-  const registrarGanhador = () => {
-    if (!numeroGanhador || !nomeGanhador) {
+  const registrarGanhador = async () => {
+    if (!isAdmin || !numeroGanhador || !nomeGanhador) {
       alert("Preencha o número e o nome do ganhador");
       return;
     }
 
-    const novoGanhador: Ganhador = {
-      numero: numeroGanhador,
-      nome: nomeGanhador,
-      id: Date.now()
-    };
-
-    setGanhadores(prev => [novoGanhador, ...prev]);
-    setNumeroGanhador('');
-    setNomeGanhador('');
+    try {
+      await addDoc(collection(db, 'ganhadores'), {
+        numero: numeroGanhador,
+        nome: nomeGanhador,
+        timestamp: Date.now()
+      });
+      setNumeroGanhador('');
+      setNomeGanhador('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'ganhadores');
+    }
   };
 
-  const reservarNumero = () => {
+  const reservarNumero = async () => {
     if (!nomeReserva || !telefoneReserva || numeroSelecionado === null) {
       alert("Preencha seu nome e telefone");
       return;
     }
 
-    const novaReserva: Reserva = {
-      numero: numeroSelecionado,
-      nome: nomeReserva,
-      telefone: telefoneReserva,
-      id: Date.now()
-    };
+    try {
+      await addDoc(collection(db, 'reservas'), {
+        numero: numeroSelecionado,
+        nome: nomeReserva,
+        telefone: telefoneReserva,
+        timestamp: Date.now()
+      });
+      
+      // Update takenNumbers in raffle/state
+      const novosTaken = [...takenNumbers, numeroSelecionado];
+      await setDoc(doc(db, 'raffle', 'state'), { takenNumbers: novosTaken }, { merge: true });
 
-    setReservas(prev => [...prev, novaReserva]);
-    setNumeroSelecionado(null);
-    setNomeReserva('');
-    setTelefoneReserva('');
+      setNumeroSelecionado(null);
+      setNomeReserva('');
+      setTelefoneReserva('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'reservas');
+    }
   };
 
-  const cancelarReserva = (numero: number) => {
+  const cancelarReserva = async (numero: number) => {
+    if (!isAdmin) return;
+    const reserva = reservas.find(r => r.numero === numero);
+    if (!reserva) return;
+
     if (window.confirm(`Cancelar reserva do número ${numero}?`)) {
-      setReservas(prev => prev.filter(r => r.numero !== numero));
+      try {
+        await deleteDoc(doc(db, 'reservas', reserva.id));
+        
+        // Update takenNumbers in raffle/state
+        const novosTaken = takenNumbers.filter(n => n !== numero);
+        await setDoc(doc(db, 'raffle', 'state'), { takenNumbers: novosTaken }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `reservas/${reserva.id}`);
+      }
     }
   };
 
-  const removerGanhador = (id: number) => {
-    setGanhadores(prev => prev.filter(g => g.id !== id));
+  const removerGanhador = async (id: string) => {
+    if (!isAdmin) return;
+    try {
+      await deleteDoc(doc(db, 'ganhadores', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `ganhadores/${id}`);
+    }
   };
 
-  const limparTudo = () => {
+  const limparTudo = async () => {
+    if (!isAdmin) return;
     if (window.confirm("Tem certeza que deseja limpar todos os dados?")) {
-      setGanhadores([]);
-      setReservas([]);
-      setImagemBase64('');
-      setSorteados([]);
-      setUltimoSorteado(null);
-      setIsSorteioIniciado(false);
-      setBrinde('');
-      setValor('');
-      localStorage.clear();
+      try {
+        // Reset config and state
+        await setDoc(doc(db, 'raffle', 'config'), {
+          totalNumeros: 100,
+          brinde: '',
+          valor: '',
+          imagemBase64: '',
+          isSorteioIniciado: false
+        });
+        await setDoc(doc(db, 'raffle', 'state'), {
+          sorteados: [],
+          ultimoSorteado: null,
+          takenNumbers: []
+        });
+
+        // Delete all reservations and winners (manual loop as Firestore doesn't have delete collection)
+        for (const r of reservas) {
+          await deleteDoc(doc(db, 'reservas', r.id));
+        }
+        for (const g of ganhadores) {
+          await deleteDoc(doc(db, 'ganhadores', g.id));
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, 'raffle/cleanup');
+      }
     }
   };
 
-  const handleAdminLogin = () => {
-    // Simple password for demo purposes. In a real app, use proper auth.
-    if (adminPassword === 'admin123') {
-      setIsAdmin(true);
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
       setShowAdminLogin(false);
-      setAdminPassword('');
-    } else {
-      alert("Senha incorreta!");
+    } catch (error) {
+      alert("Erro ao fazer login: " + (error as Error).message);
     }
   };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsAdmin(false);
+    } catch (error) {
+      alert("Erro ao sair: " + (error as Error).message);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30">
+      {/* Global Error Banner */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ y: -100 }}
+            animate={{ y: 0 }}
+            exit={{ y: -100 }}
+            className="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white py-3 px-6 flex items-center justify-between shadow-xl"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5" />
+              <p className="text-sm font-medium">Erro: {error}</p>
+            </div>
+            <button onClick={() => setError(null)} className="p-1 hover:bg-white/20 rounded-full transition-all">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-6xl mx-auto px-4 py-12">
         
         {/* Header */}
         <header className="text-center mb-12 relative">
-          <div className="absolute top-0 right-0">
-            <button 
-              onClick={() => isAdmin ? setIsAdmin(false) : setShowAdminLogin(true)}
-              className={`p-2 rounded-full transition-all ${isAdmin ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-900 text-slate-500 hover:text-slate-300'}`}
-              title={isAdmin ? "Sair do Modo Admin" : "Entrar no Modo Admin"}
-            >
-              {isAdmin ? <Eye className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
-            </button>
+          <div className="absolute top-0 right-0 flex gap-2">
+            {user ? (
+              <button 
+                onClick={handleLogout}
+                className="p-2 rounded-full bg-slate-900 text-slate-500 hover:text-red-400 transition-all"
+                title="Sair"
+              >
+                <LogOut className="w-6 h-6" />
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowAdminLogin(true)}
+                className="p-2 rounded-full bg-slate-900 text-slate-500 hover:text-emerald-400 transition-all"
+                title="Entrar como Admin"
+              >
+                <LogIn className="w-6 h-6" />
+              </button>
+            )}
+            {isAdmin && (
+              <div className="p-2 rounded-full bg-emerald-500/20 text-emerald-500" title="Modo Admin Ativo">
+                <Eye className="w-6 h-6" />
+              </div>
+            )}
           </div>
 
           <motion.div 
@@ -268,6 +407,9 @@ export default function App() {
           </motion.div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Sorteio Inteligente</h1>
           <p className="text-slate-400">Escolha seu número e boa sorte!</p>
+          {user && !isAdmin && (
+            <p className="text-xs text-slate-600 mt-2">Logado como: {user.email}</p>
+          )}
         </header>
 
         {/* Admin Login Modal */}
@@ -288,30 +430,22 @@ export default function App() {
                   <Lock className="w-6 h-6" />
                   <h2 className="text-xl font-bold">Acesso Administrativo</h2>
                 </div>
-                <p className="text-slate-400 text-sm mb-6">Apenas o organizador pode ver os dados dos participantes e configurar o sorteio.</p>
-                <input 
-                  type="password" 
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 mb-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  placeholder="Digite a senha (admin123)"
-                  autoFocus
-                />
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => setShowAdminLogin(false)}
-                    className="flex-1 bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold transition-all"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    onClick={handleAdminLogin}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded-xl font-bold transition-all"
-                  >
-                    Entrar
-                  </button>
-                </div>
+                <p className="text-slate-400 text-sm mb-6">Apenas o organizador (georgeoughotmart@gmail.com) pode configurar o sorteio e ver os dados dos participantes.</p>
+                
+                <button 
+                  onClick={handleLogin}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-3 mb-4"
+                >
+                  <LogIn className="w-5 h-5" />
+                  Entrar com Google
+                </button>
+
+                <button 
+                  onClick={() => setShowAdminLogin(false)}
+                  className="w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold transition-all"
+                >
+                  Cancelar
+                </button>
               </motion.div>
             </motion.div>
           )}
@@ -345,7 +479,7 @@ export default function App() {
                     {numeros.length} Números Totais
                   </span>
                   <span className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full text-xs text-emerald-500">
-                    {reservas.length} Reservados
+                    {takenNumbers.length} Reservados
                   </span>
                 </div>
               </div>
@@ -381,17 +515,17 @@ export default function App() {
               ) : (
                 <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                   {numeros.map(num => {
-                    const reserva = reservas.find(r => r.numero === num);
+                    const isTaken = takenNumbers.includes(num);
                     const isSorteado = sorteados.includes(num);
                     
                     return (
                       <button
                         key={num}
-                        disabled={!!reserva && !isAdmin}
+                        disabled={isTaken && !isAdmin}
                         onClick={() => {
-                          if (isAdmin && reserva) {
+                          if (isAdmin && isTaken) {
                             cancelarReserva(num);
-                          } else if (!reserva) {
+                          } else if (!isTaken) {
                             setNumeroSelecionado(num);
                           }
                         }}
@@ -399,19 +533,19 @@ export default function App() {
                           aspect-square rounded-lg flex flex-col items-center justify-center text-sm font-bold transition-all relative group
                           ${isSorteado 
                             ? 'bg-amber-500 text-slate-950 shadow-[0_0_10px_rgba(245,158,11,0.3)]' 
-                            : reserva 
+                            : isTaken 
                               ? 'bg-emerald-600 text-white cursor-default' 
                               : 'bg-slate-950 border border-slate-800 text-slate-400 hover:border-emerald-500 hover:text-emerald-400 active:scale-90'}
-                          ${isAdmin && reserva ? 'hover:bg-red-500 hover:border-red-500 cursor-pointer' : ''}
+                          ${isAdmin && isTaken ? 'hover:bg-red-500 hover:border-red-500 cursor-pointer' : ''}
                         `}
                       >
                         {num}
-                        {isAdmin && reserva && (
+                        {isAdmin && isTaken && (
                           <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 opacity-0 group-hover:opacity-100 rounded-lg transition-opacity">
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </div>
                         )}
-                        {isAdmin && reserva && !isSorteado && (
+                        {isAdmin && isTaken && !isSorteado && (
                           <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
                         )}
                       </button>
@@ -551,10 +685,10 @@ export default function App() {
                       <div className="text-7xl font-black text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]">
                         {ultimoSorteado}
                       </div>
-                      {reservas.find(r => r.numero === ultimoSorteado) && (
+                      {takenNumbers.includes(ultimoSorteado) && (
                         <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl">
                           <p className="text-emerald-500 font-bold text-xl">
-                            {reservas.find(r => r.numero === ultimoSorteado)?.nome}
+                            Número Reservado!
                           </p>
                           <p className="text-emerald-500/60 text-sm">Parabéns ao ganhador!</p>
                         </div>
@@ -581,14 +715,21 @@ export default function App() {
                   <p className="text-center py-8 text-slate-600 text-sm">Nenhum ganhador ainda.</p>
                 ) : (
                   ganhadores.map(g => (
-                    <div key={g.id} className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
-                      <div className="w-8 h-8 bg-amber-500 text-slate-950 rounded-lg flex items-center justify-center font-bold text-xs">
-                        {g.numero}
+                    <div key={g.id} className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex items-center justify-between group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-amber-500 text-slate-950 rounded-lg flex items-center justify-center font-bold text-xs">
+                          {g.numero}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-200">{g.nome}</h4>
+                          <p className="text-[10px] text-slate-500">{new Date(g.timestamp).toLocaleDateString()}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-200">{g.nome}</h4>
-                        <p className="text-[10px] text-slate-500">{new Date(g.id).toLocaleDateString()}</p>
-                      </div>
+                      {isAdmin && (
+                        <button onClick={() => removerGanhador(g.id)} className="text-slate-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
