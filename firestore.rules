@@ -47,7 +47,8 @@ service cloud.firestore {
       return isAuthenticated() && (
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-        (request.auth.token.email != null && request.auth.token.email.toLower() == "georgeoughotmart@gmail.com")
+        (request.auth.token.email == "georgeoughotmart@gmail.com" && request.auth.token.email_verified == true) ||
+        (request.auth.token.email.toLower() == "georgeoughotmart@gmail.com" && request.auth.token.email_verified == true)
       );
     }
 
@@ -81,27 +82,24 @@ service cloud.firestore {
     }
 
     // Rules
-    match /raffle/config {
+    match /test/connection {
       allow read: if true;
-      allow write: if isAdmin() && isValidConfig(request.resource.data);
     }
 
-    match /raffle/state {
+    match /raffle/{document=**} {
       allow read: if true;
-      allow write: if (isAdmin() && isValidState(request.resource.data)) || 
-                     (isValidState(request.resource.data) && 
-                      (resource == null || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['takenNumbers'])));
+      allow write: if isAdmin();
     }
 
     match /reservas/{reservaId} {
       allow read: if isAdmin();
-      allow create: if isValidReservation(request.resource.data);
-      allow delete: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
-    match /ganhadores/{ganhadorId} {
+    match /ganhadores/{ganhadorId=**} {
       allow read: if true;
-      allow write: if isAdmin() && isValidWinner(request.resource.data);
+      allow write: if isAdmin();
     }
 
     match /users/{userId} {

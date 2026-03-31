@@ -87,8 +87,8 @@ function RaffleApp() {
       if (user && user.email) {
         const email = user.email.trim().toLowerCase();
         const adminEmail = 'georgeoughotmart@gmail.com';
-        const isAdminUser = email === adminEmail;
-        console.log(`Verificando admin: ${email} === ${adminEmail} -> ${isAdminUser}`);
+        const isAdminUser = email === adminEmail && user.emailVerified;
+        console.log(`Verificando admin: ${email} === ${adminEmail} (Verificado: ${user.emailVerified}) -> ${isAdminUser}`);
         setIsAdmin(isAdminUser);
       } else {
         setIsAdmin(false);
@@ -101,6 +101,7 @@ function RaffleApp() {
   // Firestore Listeners
   useEffect(() => {
     if (!isAuthReady) return;
+    setError(null); // Clear previous errors when re-initializing listeners
 
     // 1. Raffle Config
     const unsubConfig = onSnapshot(doc(db, 'raffle', 'config'), (snapshot) => {
@@ -128,7 +129,10 @@ function RaffleApp() {
       }
     }, (err) => {
       try { handleFirestoreError(err, OperationType.GET, 'raffle/config'); }
-      catch (e: any) { setError(JSON.parse(e.message).error); }
+      catch (e: any) { 
+        const errObj = JSON.parse(e.message);
+        setError(`${errObj.error} (Path: ${errObj.path})`); 
+      }
     });
 
     // 2. Raffle State
@@ -149,7 +153,10 @@ function RaffleApp() {
       }
     }, (err) => {
       try { handleFirestoreError(err, OperationType.GET, 'raffle/state'); }
-      catch (e: any) { setError(JSON.parse(e.message).error); }
+      catch (e: any) { 
+        const errObj = JSON.parse(e.message);
+        setError(`${errObj.error} (Path: ${errObj.path})`); 
+      }
     });
 
     // 3. Reservations (Admin Only)
@@ -161,7 +168,10 @@ function RaffleApp() {
         setReservas(docs);
       }, (err) => {
         try { handleFirestoreError(err, OperationType.GET, 'reservas'); }
-        catch (e: any) { setError(JSON.parse(e.message).error); }
+        catch (e: any) { 
+          const errObj = JSON.parse(e.message);
+          setError(`${errObj.error} (Path: ${errObj.path})`); 
+        }
       });
     } else {
       setReservas([]); // Clear for non-admins
@@ -174,7 +184,10 @@ function RaffleApp() {
       setGanhadores(docs);
     }, (err) => {
       try { handleFirestoreError(err, OperationType.GET, 'ganhadores'); }
-      catch (e: any) { setError(JSON.parse(e.message).error); }
+      catch (e: any) { 
+        const errObj = JSON.parse(e.message);
+        setError(`${errObj.error} (Path: ${errObj.path})`); 
+      }
     });
 
     return () => {
