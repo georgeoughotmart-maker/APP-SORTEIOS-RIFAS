@@ -1,20 +1,67 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Sorteio Inteligente 🎯
 
-# Run and deploy your AI Studio app
+Um aplicativo moderno e responsivo para gerenciamento de rifas e sorteios, desenvolvido com React, Tailwind CSS e Framer Motion.
 
-This contains everything you need to run your app locally.
+## 🚀 Funcionalidades
 
-View your app in AI Studio: https://ai.studio/apps/7e5cca6c-140f-4a26-a859-059e78a10fae
+- **Grade de Números**: Visualização clara de números disponíveis, reservados e sorteados.
+- **Reserva de Números**: Participantes podem escolher seus números e preencher nome/telefone.
+- **Modo Administrador**:
+  - Acesso protegido por senha (`admin123`).
+  - Visualização de dados privados dos participantes.
+  - Configuração do sorteio (total de números, descrição do prêmio, valor e imagem).
+  - Cancelamento de reservas.
+  - Realização do sorteio com prioridade para números reservados.
+- **Persistência Local**: Todos os dados são salvos no navegador (`localStorage`).
+- **Design Responsivo**: Funciona perfeitamente em celulares e computadores.
 
-## Run Locally
+## 🛠️ Tecnologias
 
-**Prerequisites:**  Node.js
+- **React 19**
+- **Tailwind CSS 4**
+- **Lucide React** (Ícones)
+- **Framer Motion** (Animações)
+- **Vite** (Build Tool)
 
+## 📦 Como rodar localmente
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Clone o repositório:
+   ```bash
+   git clone <url-do-seu-repositorio>
+   ```
+2. Instale as dependências:
+   ```bash
+   npm install
+   ```
+3. Inicie o servidor de desenvolvimento:
+   ```bash
+   npm run dev
+   ```
+
+## 🌐 Como subir no GitHub
+
+1. Crie um novo repositório no GitHub.
+2. No seu terminal, dentro da pasta do projeto:
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin <url-do-seu-repositorio-github>
+   git push -u origin main
+   ```
+
+## ⚡ Como subir na Vercel
+
+1. Acesse [vercel.com](https://vercel.com) e conecte sua conta do GitHub.
+2. Clique em **"Add New"** > **"Project"**.
+3. Importe o repositório do seu GitHub.
+4. Nas configurações de build, a Vercel deve detectar automaticamente o **Vite**:
+   - **Framework Preset**: Vite
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+5. Clique em **Deploy**.
+
+---
+
+Desenvolvido com ❤️ para facilitar seus sorteios!
