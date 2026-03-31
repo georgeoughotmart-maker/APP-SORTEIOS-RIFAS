@@ -44,18 +44,21 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
+      return isAuthenticated() && (
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email.lower() == "georgeoughotmart@gmail.com"));
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (request.auth.token.email != null && request.auth.token.email.toLower() == "georgeoughotmart@gmail.com")
+      );
     }
 
     function isValidConfig(data) {
-      return data.totalNumeros is number && data.totalNumeros >= 10 && data.totalNumeros <= 500 &&
+      return data.totalNumeros is number && 
+             data.totalNumeros >= 10 && 
+             data.totalNumeros <= 1000 &&
              data.isSorteioIniciado is bool &&
-             (!('brinde' in data) || (data.brinde is string && data.brinde.size() < 200)) &&
-             (!('valor' in data) || (data.valor is string && data.valor.size() < 50)) &&
-             (!('imagemBase64' in data) || (data.imagemBase64 is string && data.imagemBase64.size() < 1048576));
+             (!('brinde' in data) || data.brinde is string) &&
+             (!('valor' in data) || data.valor is string) &&
+             (!('imagemBase64' in data) || data.imagemBase64 is string);
     }
 
     function isValidState(data) {

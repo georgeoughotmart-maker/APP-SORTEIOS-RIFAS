@@ -206,15 +206,26 @@ function RaffleApp() {
 
   const iniciarSorteio = async () => {
     if (!isAdmin) return;
-    if (isNaN(totalNumeros) || totalNumeros < 10 || totalNumeros > 500) {
-      alert("Escolha entre 10 e 500 números");
+    if (isNaN(totalNumeros) || totalNumeros < 10 || totalNumeros > 1000) {
+      alert("Escolha entre 10 e 1000 números");
       return;
     }
 
     try {
       setError(null);
-      console.log("Iniciando/Atualizando sorteio...");
+      console.log("Iniciando/Atualizando sorteio...", {
+        user: user?.email,
+        isAdmin,
+        totalNumeros,
+        isSorteioIniciado
+      });
       
+      if (!isAdmin) {
+        console.error("Tentativa de salvar config sem ser admin!");
+        setError("Você não tem permissão para realizar esta ação.");
+        return;
+      }
+
       await setDoc(doc(db, 'raffle', 'config'), {
         totalNumeros,
         brinde,
@@ -308,17 +319,20 @@ function RaffleApp() {
 
     try {
       setError(null);
-      console.log("Iniciando reserva do número:", numeroSelecionado, { nome: nomeReserva, telefone: telefoneReserva });
+      console.log("Iniciando reserva do número:", numeroSelecionado, { 
+        nome: nomeReserva, 
+        telefone: telefoneReserva,
+        user: user?.email 
+      });
       
       // 1. Create the reservation document
-      await addDoc(collection(db, 'reservas'), {
+      const resRef = await addDoc(collection(db, 'reservas'), {
         numero: numeroSelecionado,
         nome: nomeReserva,
         telefone: telefoneReserva,
         timestamp: Date.now()
       });
-      
-      console.log("Documento de reserva criado com sucesso");
+      console.log("Documento de reserva criado com ID:", resRef.id);
 
       // 2. Update takenNumbers in raffle/state using setDoc with merge for safety (in case doc doesn't exist)
       await setDoc(doc(db, 'raffle', 'state'), { 
@@ -681,7 +695,7 @@ function RaffleApp() {
                     
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Total de Números (Max 500)</label>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Total de Números (Max 1000)</label>
                         <input 
                           type="number" 
                           value={isNaN(totalNumeros) ? '' : totalNumeros}
@@ -728,6 +742,14 @@ function RaffleApp() {
                         >
                           <RotateCcw className="w-5 h-5" />
                           REALIZAR SORTEIO
+                        </button>
+
+                        <button 
+                          onClick={limparTudo}
+                          className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 mt-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          LIMPAR TODOS OS DADOS
                         </button>
                       </div>
                     </div>
