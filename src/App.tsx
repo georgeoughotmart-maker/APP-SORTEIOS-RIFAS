@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
   doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, query, orderBy,
+  updateDoc, arrayUnion, arrayRemove,
   OperationType, handleFirestoreError 
 } from './firebase';
 
@@ -146,7 +147,7 @@ function RaffleApp() {
       unsubReservas();
       unsubGanhadores();
     };
-  }, [isAuthReady]);
+  }, [isAuthReady, isAdmin]);
 
   const carregarImagem = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -258,9 +259,10 @@ function RaffleApp() {
         timestamp: Date.now()
       });
       
-      // Update takenNumbers in raffle/state
-      const novosTaken = [...takenNumbers, numeroSelecionado];
-      await setDoc(doc(db, 'raffle', 'state'), { takenNumbers: novosTaken }, { merge: true });
+      // Update takenNumbers in raffle/state using arrayUnion for safety
+      await updateDoc(doc(db, 'raffle', 'state'), { 
+        takenNumbers: arrayUnion(numeroSelecionado) 
+      });
 
       setNumeroSelecionado(null);
       setNomeReserva('');
@@ -279,9 +281,10 @@ function RaffleApp() {
       try {
         await deleteDoc(doc(db, 'reservas', reserva.id));
         
-        // Update takenNumbers in raffle/state
-        const novosTaken = takenNumbers.filter(n => n !== numero);
-        await setDoc(doc(db, 'raffle', 'state'), { takenNumbers: novosTaken }, { merge: true });
+        // Update takenNumbers in raffle/state using arrayRemove
+        await updateDoc(doc(db, 'raffle', 'state'), { 
+          takenNumbers: arrayRemove(numero) 
+        });
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `reservas/${reserva.id}`);
       }
