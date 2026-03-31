@@ -60,6 +60,18 @@ export default function App() {
     const savedReservas = localStorage.getItem('reservas');
     if (savedReservas) setReservas(JSON.parse(savedReservas));
 
+    const savedBrinde = localStorage.getItem('brinde');
+    if (savedBrinde) setBrinde(savedBrinde);
+
+    const savedValor = localStorage.getItem('valor');
+    if (savedValor) setValor(savedValor);
+
+    const savedSorteados = localStorage.getItem('sorteados');
+    if (savedSorteados) setSorteados(JSON.parse(savedSorteados));
+
+    const savedUltimo = localStorage.getItem('ultimoSorteado');
+    if (savedUltimo) setUltimoSorteado(parseInt(savedUltimo));
+
     const savedTotal = localStorage.getItem('totalNumeros');
     if (savedTotal) {
       const total = parseInt(savedTotal);
@@ -77,6 +89,26 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('reservas', JSON.stringify(reservas));
   }, [reservas]);
+
+  useEffect(() => {
+    localStorage.setItem('brinde', brinde);
+  }, [brinde]);
+
+  useEffect(() => {
+    localStorage.setItem('valor', valor);
+  }, [valor]);
+
+  useEffect(() => {
+    localStorage.setItem('sorteados', JSON.stringify(sorteados));
+  }, [sorteados]);
+
+  useEffect(() => {
+    if (ultimoSorteado !== null) {
+      localStorage.setItem('ultimoSorteado', ultimoSorteado.toString());
+    } else {
+      localStorage.removeItem('ultimoSorteado');
+    }
+  }, [ultimoSorteado]);
 
   useEffect(() => {
     if (isSorteioIniciado) {
@@ -194,6 +226,8 @@ export default function App() {
       setSorteados([]);
       setUltimoSorteado(null);
       setIsSorteioIniciado(false);
+      setBrinde('');
+      setValor('');
       localStorage.clear();
     }
   };
