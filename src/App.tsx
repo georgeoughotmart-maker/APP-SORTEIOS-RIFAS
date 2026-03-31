@@ -340,21 +340,21 @@ function RaffleApp() {
         const stateRef = doc(db, 'raffle', 'state');
         const resRef = doc(db, 'reservas', String(numeroSelecionado));
         
-        const [stateDoc, resDoc] = await Promise.all([
-          transaction.get(stateRef),
-          transaction.get(resRef)
-        ]);
+        const stateDoc = await transaction.get(stateRef);
         
         let takenNumbers = [];
         if (stateDoc.exists()) {
           takenNumbers = stateDoc.data().takenNumbers || [];
         }
 
-        if (takenNumbers.includes(numeroSelecionado) || resDoc.exists()) {
+        if (takenNumbers.includes(numeroSelecionado)) {
           throw new Error("Este número já foi reservado por outra pessoa.");
         }
 
         // 1. Create the reservation document using the number as ID to prevent duplicates
+        // We don't transaction.get(resRef) here because non-admins don't have read access to 'reservas'.
+        // The transaction.set will fail if the document already exists and the user is not an admin
+        // (because update permission is restricted to admins).
         transaction.set(resRef, {
           numero: numeroSelecionado,
           nome: nomeReserva,
