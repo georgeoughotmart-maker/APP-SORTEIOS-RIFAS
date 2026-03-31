@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { Trophy, User, Hash, Image as ImageIcon, Play, RotateCcw, Save, Trash2, Gift, DollarSign, Grid, Lock, Eye, EyeOff, Phone, LogIn, LogOut, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
+  auth, db, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, query, orderBy,
   updateDoc, arrayUnion, arrayRemove,
   OperationType, handleFirestoreError 
@@ -68,12 +68,26 @@ function RaffleApp() {
 
   // Auth Listener
   useEffect(() => {
+    console.log("Iniciando onAuthStateChanged...");
+    
+    // Handle redirect result
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        console.log("Login via redirecionamento bem-sucedido:", result.user.email);
+      }
+    }).catch((error) => {
+      console.error("Erro no resultado do redirecionamento:", error);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log("Estado de autenticação mudou:", user ? user.email : "Deslogado");
       setUser(user);
       // Check if user is the admin email provided in context
-      if (user && user.email === 'georgeoughotmart@gmail.com') {
+      if (user && user.email && user.email.trim().toLowerCase() === 'georgeoughotmart@gmail.com') {
+        console.log("Usuário identificado como ADMIN");
         setIsAdmin(true);
       } else {
+        if (user) console.log("Usuário NÃO é admin:", user.email);
         setIsAdmin(false);
       }
       setIsAuthReady(true);
@@ -333,13 +347,23 @@ function RaffleApp() {
 
   const handleLogin = async () => {
     try {
-      console.log("Iniciando login com Google...");
+      console.log("Iniciando login com Google (Popup)...");
       const result = await signInWithPopup(auth, googleProvider);
       console.log("Login bem-sucedido:", result.user.email);
       setShowAdminLogin(false);
-    } catch (error) {
-      console.error("Erro ao fazer login:", error);
-      alert("Erro ao fazer login: " + (error as Error).message);
+    } catch (error: any) {
+      console.error("Erro ao fazer login (Popup):", error);
+      if (error.code === 'auth/popup-blocked') {
+        console.log("Popup bloqueado, tentando redirecionamento...");
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectError) {
+          console.error("Erro ao fazer login (Redirecionamento):", redirectError);
+          alert("Erro ao fazer login: " + (redirectError as Error).message);
+        }
+      } else {
+        alert("Erro ao fazer login: " + (error as Error).message);
+      }
     }
   };
 
@@ -413,8 +437,10 @@ function RaffleApp() {
           </motion.div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Sorteio Inteligente</h1>
           <p className="text-slate-400">Escolha seu número e boa sorte!</p>
-          {user && !isAdmin && (
-            <p className="text-xs text-slate-600 mt-2">Logado como: {user.email}</p>
+          {user && (
+            <div className={`mt-2 px-3 py-1 rounded-full text-xs font-medium inline-block ${isAdmin ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-800 text-slate-400'}`}>
+              {isAdmin ? 'Administrador: ' : 'Logado como: '} {user.email}
+            </div>
           )}
         </header>
 
@@ -440,10 +466,24 @@ function RaffleApp() {
                 
                 <button 
                   onClick={handleLogin}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-3 mb-4"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-3 mb-2"
                 >
                   <LogIn className="w-5 h-5" />
                   Entrar com Google
+                </button>
+
+                <button 
+                  onClick={async () => {
+                    try {
+                      console.log("Iniciando login com Google (Redirecionamento Direto)...");
+                      await signInWithRedirect(auth, googleProvider);
+                    } catch (e: any) {
+                      alert("Erro: " + e.message);
+                    }
+                  }}
+                  className="w-full bg-slate-800 hover:bg-slate-700 py-2 rounded-xl text-xs text-slate-400 transition-all mb-4"
+                >
+                  Problemas com o popup? Tente redirecionar
                 </button>
 
                 <button 
