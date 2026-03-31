@@ -86,14 +86,24 @@ service cloud.firestore {
       allow read: if true;
     }
 
-    match /raffle/{document=**} {
+    match /raffle/config {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isValidConfig(request.resource.data);
+    }
+
+    match /raffle/state {
+      allow read: if true;
+      allow write: if isAdmin() && isValidState(request.resource.data);
+      // Allow anyone to update takenNumbers when reserving
+      allow create: if isValidState(request.resource.data) && 
+                      request.resource.data.keys().hasOnly(['takenNumbers']);
+      allow update: if isValidState(request.resource.data) && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['takenNumbers']);
     }
 
     match /reservas/{reservaId} {
       allow read: if isAdmin();
-      allow create: if true;
+      allow create: if isValidReservation(request.resource.data);
       allow update, delete: if isAdmin();
     }
 

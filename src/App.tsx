@@ -339,6 +339,7 @@ function RaffleApp() {
       });
       
       // 1. Create the reservation document
+      console.log("Tentando criar documento em 'reservas'...");
       const resRef = await addDoc(collection(db, 'reservas'), {
         numero: numeroSelecionado,
         nome: nomeReserva,
@@ -348,9 +349,14 @@ function RaffleApp() {
       console.log("Documento de reserva criado com ID:", resRef.id);
 
       // 2. Update takenNumbers in raffle/state using setDoc with merge for safety (in case doc doesn't exist)
-      await setDoc(doc(db, 'raffle', 'state'), { 
-        takenNumbers: arrayUnion(numeroSelecionado) 
-      }, { merge: true });
+      console.log("Tentando atualizar 'raffle/state'...");
+      try {
+        await setDoc(doc(db, 'raffle', 'state'), { 
+          takenNumbers: arrayUnion(numeroSelecionado) 
+        }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'raffle/state');
+      }
 
       console.log("Estado da rifa atualizado com sucesso");
 
