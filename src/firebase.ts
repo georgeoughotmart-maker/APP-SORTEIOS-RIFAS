@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, getDoc, getDocFromServer, query, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { getFirestore, doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, getDoc, getDocFromServer, query, orderBy, updateDoc, arrayUnion, arrayRemove, runTransaction } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -14,7 +14,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 export { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged };
 
 // Firestore Helpers
-export { doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, getDoc, getDocFromServer, query, orderBy, updateDoc, arrayUnion, arrayRemove };
+export { doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, getDoc, getDocFromServer, query, orderBy, updateDoc, arrayUnion, arrayRemove, runTransaction };
 
 // Operation Types for Error Handling
 export enum OperationType {

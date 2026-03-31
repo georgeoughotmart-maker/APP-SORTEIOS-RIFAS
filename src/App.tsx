@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   auth, db, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   doc, collection, onSnapshot, setDoc, addDoc, deleteDoc, query, orderBy,
-  updateDoc, arrayUnion, arrayRemove,
+  updateDoc, arrayUnion, arrayRemove, runTransaction,
   OperationType, handleFirestoreError 
 } from './firebase';
 
@@ -50,6 +50,7 @@ function RaffleApp() {
   const [sorteados, setSorteados] = useState<number[]>([]);
   const [takenNumbers, setTakenNumbers] = useState<number[]>([]);
   const [ultimoSorteado, setUltimoSorteado] = useState<number | null>(null);
+  const [isReserving, setIsReserving] = useState<boolean>(false);
   const [isSorteioIniciado, setIsSorteioIniciado] = useState<boolean>(false);
   
   // Winners State
@@ -325,40 +326,50 @@ function RaffleApp() {
   };
 
   const reservarNumero = async () => {
-    if (!nomeReserva || !telefoneReserva || numeroSelecionado === null) {
-      alert("Preencha seu nome e telefone");
+    if (!nomeReserva || !telefoneReserva || numeroSelecionado === null || isReserving) {
+      if (!nomeReserva || !telefoneReserva) alert("Preencha seu nome e telefone");
       return;
     }
 
+    setIsReserving(true);
     try {
       setError(null);
-      console.log("Iniciando reserva do número:", numeroSelecionado, { 
-        nome: nomeReserva, 
-        telefone: telefoneReserva,
-        user: user?.email 
-      });
+      console.log("Iniciando reserva do número:", numeroSelecionado);
       
-      // 1. Create the reservation document
-      console.log("Tentando criar documento em 'reservas'...");
-      const resRef = await addDoc(collection(db, 'reservas'), {
-        numero: numeroSelecionado,
-        nome: nomeReserva,
-        telefone: telefoneReserva,
-        timestamp: Date.now()
-      });
-      console.log("Documento de reserva criado com ID:", resRef.id);
+      await runTransaction(db, async (transaction) => {
+        const stateRef = doc(db, 'raffle', 'state');
+        const resRef = doc(db, 'reservas', String(numeroSelecionado));
+        
+        const [stateDoc, resDoc] = await Promise.all([
+          transaction.get(stateRef),
+          transaction.get(resRef)
+        ]);
+        
+        let takenNumbers = [];
+        if (stateDoc.exists()) {
+          takenNumbers = stateDoc.data().takenNumbers || [];
+        }
 
-      // 2. Update takenNumbers in raffle/state using setDoc with merge for safety (in case doc doesn't exist)
-      console.log("Tentando atualizar 'raffle/state'...");
-      try {
-        await setDoc(doc(db, 'raffle', 'state'), { 
-          takenNumbers: arrayUnion(numeroSelecionado) 
+        if (takenNumbers.includes(numeroSelecionado) || resDoc.exists()) {
+          throw new Error("Este número já foi reservado por outra pessoa.");
+        }
+
+        // 1. Create the reservation document using the number as ID to prevent duplicates
+        transaction.set(resRef, {
+          numero: numeroSelecionado,
+          nome: nomeReserva,
+          telefone: telefoneReserva,
+          timestamp: Date.now()
+        });
+
+        // 2. Update takenNumbers in raffle/state
+        const newTakenNumbers = [...takenNumbers, numeroSelecionado];
+        transaction.set(stateRef, { 
+          takenNumbers: newTakenNumbers 
         }, { merge: true });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, 'raffle/state');
-      }
+      });
 
-      console.log("Estado da rifa atualizado com sucesso");
+      console.log("Reserva concluída com sucesso");
 
       setNumeroSelecionado(null);
       setNomeReserva('');
@@ -366,13 +377,23 @@ function RaffleApp() {
       alert("Reserva realizada com sucesso!");
     } catch (error: any) {
       console.error("Erro ao reservar número:", error);
-      try { 
-        handleFirestoreError(error, OperationType.CREATE, 'reservas'); 
-      } catch (e: any) {
-        const errObj = JSON.parse(e.message);
-        setError(`Erro ao salvar: ${errObj.error}`);
-        alert(`Erro ao salvar: ${errObj.error}`);
+      if (error.message === "Este número já foi reservado por outra pessoa.") {
+        alert(error.message);
+      } else {
+        try { 
+          handleFirestoreError(error, OperationType.WRITE, 'reservas'); 
+        } catch (e: any) {
+          try {
+            const errObj = JSON.parse(e.message);
+            setError(`Erro ao salvar: ${errObj.error}`);
+            alert(`Erro ao salvar: ${errObj.error}`);
+          } catch (parseError) {
+            setError("Erro ao processar reserva. Tente novamente.");
+          }
+        }
       }
+    } finally {
+      setIsReserving(false);
     }
   };
 
@@ -936,9 +957,17 @@ function RaffleApp() {
                   </div>
                   <button 
                     onClick={reservarNumero}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-black text-lg transition-all shadow-xl shadow-emerald-900/20 active:scale-95"
+                    disabled={isReserving}
+                    className={`w-full py-4 rounded-2xl font-black text-lg transition-all shadow-xl shadow-emerald-900/20 active:scale-95 flex items-center justify-center gap-2 ${isReserving ? 'bg-slate-700 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500'}`}
                   >
-                    CONFIRMAR RESERVA
+                    {isReserving ? (
+                      <>
+                        <RotateCcw className="w-5 h-5 animate-spin" />
+                        PROCESSANDO...
+                      </>
+                    ) : (
+                      'CONFIRMAR RESERVA'
+                    )}
                   </button>
                   <p className="text-[10px] text-slate-600 text-center uppercase tracking-widest">Ao confirmar, o organizador entrará em contato.</p>
                 </div>
