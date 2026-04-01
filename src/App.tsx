@@ -66,6 +66,8 @@ function RaffleApp() {
   
   // Admin Login UI
   const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [isCounting, setIsCounting] = useState<boolean>(false);
 
   // Auth Listener
   useEffect(() => {
@@ -143,13 +145,20 @@ function RaffleApp() {
         setSorteados(data.sorteados || []);
         setTakenNumbers(data.takenNumbers || []);
         setUltimoSorteado(data.ultimoSorteado || null);
+        
+        // Sync countdown from Firestore
+        if (data.countdown !== undefined) {
+          setCountdown(data.countdown);
+          setIsCounting(data.countdown !== null);
+        }
       } else if (isAdmin) {
         // Initialize if missing
         console.log("Inicializando raffle/state...");
         setDoc(doc(db, 'raffle', 'state'), {
           sorteados: [],
           ultimoSorteado: null,
-          takenNumbers: []
+          takenNumbers: [],
+          countdown: null
         }).catch(e => console.error("Erro ao inicializar state:", e));
       }
     }, (err) => {
@@ -255,7 +264,8 @@ function RaffleApp() {
         await setDoc(doc(db, 'raffle', 'state'), {
           sorteados: [],
           ultimoSorteado: null,
-          takenNumbers: []
+          takenNumbers: [],
+          countdown: null
         }, { merge: true });
       } else {
         console.log("Configurações atualizadas sem resetar o estado.");
@@ -275,7 +285,7 @@ function RaffleApp() {
   };
 
   const sortear = async () => {
-    if (!isAdmin || !isSorteioIniciado) return;
+    if (!isAdmin || !isSorteioIniciado || isCounting) return;
 
     const pool = reservas.length > 0 
       ? reservas.map(r => r.numero).filter(n => !sorteados.includes(n))
@@ -286,25 +296,72 @@ function RaffleApp() {
       return;
     }
 
-    const num = pool[Math.floor(Math.random() * pool.length)];
-    const novosSorteados = [...sorteados, num];
-
+    setIsCounting(true);
+    setCountdown(10);
+    
     try {
-      await setDoc(doc(db, 'raffle', 'state'), {
-        sorteados: novosSorteados,
-        ultimoSorteado: num
+      await updateDoc(doc(db, 'raffle', 'state'), {
+        countdown: 10
       });
-
-      // Auto-fill winner if reserved
-      const reserva = reservas.find(r => r.numero === num);
-      if (reserva) {
-        setNumeroGanhador(num.toString());
-        setNomeGanhador(reserva.nome);
-      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'raffle/state');
+      console.error("Erro ao iniciar contagem no Firestore:", error);
     }
+    
+    // The actual drawing will happen in a useEffect when countdown reaches 0
   };
+
+  // Countdown Logic
+  useEffect(() => {
+    let timer: any;
+    if (isCounting && countdown !== null && countdown >= 0) {
+      timer = setTimeout(async () => {
+        if (countdown > 0) {
+          const nextVal = countdown - 1;
+          setCountdown(nextVal);
+          if (isAdmin) {
+            try {
+              await updateDoc(doc(db, 'raffle', 'state'), {
+                countdown: nextVal
+              });
+            } catch (e) {
+              console.error("Erro ao atualizar contagem:", e);
+            }
+          }
+        } else if (isAdmin) {
+          // countdown is 0, perform the draw
+          const performDraw = async () => {
+            const pool = reservas.length > 0 
+              ? reservas.map(r => r.numero).filter(n => !sorteados.includes(n))
+              : numeros.filter(n => !sorteados.includes(n));
+
+            if (pool.length > 0) {
+              const num = pool[Math.floor(Math.random() * pool.length)];
+              const novosSorteados = [...sorteados, num];
+
+              try {
+                await setDoc(doc(db, 'raffle', 'state'), {
+                  sorteados: novosSorteados,
+                  ultimoSorteado: num,
+                  countdown: null
+                });
+
+                // Auto-fill winner if reserved
+                const reserva = reservas.find(r => r.numero === num);
+                if (reserva) {
+                  setNumeroGanhador(num.toString());
+                  setNomeGanhador(reserva.nome);
+                }
+              } catch (error) {
+                handleFirestoreError(error, OperationType.WRITE, 'raffle/state');
+              }
+            }
+          };
+          performDraw();
+        }
+      }, 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [isCounting, countdown, reservas, sorteados, numeros, isAdmin]);
 
   const registrarGanhador = async () => {
     if (!isAdmin || !numeroGanhador || !nomeGanhador) {
@@ -440,7 +497,8 @@ function RaffleApp() {
         await setDoc(doc(db, 'raffle', 'state'), {
           sorteados: [],
           ultimoSorteado: null,
-          takenNumbers: []
+          takenNumbers: [],
+          countdown: null
         });
 
         // Delete all reservations and winners (manual loop as Firestore doesn't have delete collection)
@@ -725,6 +783,23 @@ function RaffleApp() {
                   exit={{ opacity: 0, x: 20 }}
                   className="space-y-6"
                 >
+                  {/* Admin Countdown Display */}
+                  <AnimatePresence>
+                    {isCounting && countdown !== null && (
+                      <motion.section 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-emerald-600 rounded-3xl p-6 text-center shadow-xl shadow-emerald-900/20 overflow-hidden"
+                      >
+                        <h3 className="text-white/70 font-bold uppercase text-[10px] tracking-widest mb-2">Sorteio em Andamento</h3>
+                        <div className="text-6xl font-black text-white drop-shadow-lg">
+                          {countdown}
+                        </div>
+                      </motion.section>
+                    )}
+                  </AnimatePresence>
+
                   <section className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-6 shadow-xl relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-2 bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-tighter rounded-bl-xl">Admin Mode</div>
                     
@@ -777,11 +852,11 @@ function RaffleApp() {
                       <div className="pt-4 border-t border-slate-800">
                         <button 
                           onClick={sortear}
-                          disabled={!isSorteioIniciado}
+                          disabled={!isSorteioIniciado || isCounting}
                           className="w-full bg-white text-slate-950 py-3 rounded-xl font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
-                          <RotateCcw className="w-5 h-5" />
-                          REALIZAR SORTEIO
+                          <RotateCcw className={`w-5 h-5 ${isCounting ? 'animate-spin' : ''}`} />
+                          {isCounting ? `SORTEANDO EM ${countdown}...` : 'REALIZAR SORTEIO'}
                         </button>
 
                         <button 
@@ -840,7 +915,20 @@ function RaffleApp() {
                 <h3 className="text-emerald-500 font-bold uppercase text-xs tracking-widest mb-6">Resultado do Sorteio</h3>
                 
                 <AnimatePresence mode="wait">
-                  {ultimoSorteado ? (
+                  {isCounting && countdown !== null ? (
+                    <motion.div
+                      key="countdown"
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 1.5, opacity: 0 }}
+                      className="flex flex-col items-center justify-center py-12"
+                    >
+                      <div className="text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.5)] mb-4">
+                        {countdown}
+                      </div>
+                      <p className="text-emerald-500 font-bold animate-pulse">SORTEANDO...</p>
+                    </motion.div>
+                  ) : ultimoSorteado ? (
                     <motion.div
                       key={ultimoSorteado}
                       initial={{ scale: 0.8, opacity: 0 }}
