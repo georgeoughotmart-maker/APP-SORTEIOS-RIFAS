@@ -47,8 +47,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-        (request.auth.token.email == "georgeoughotmart@gmail.com" && request.auth.token.email_verified == true) ||
-        (request.auth.token.get('email', '').lower() == "georgeoughotmart@gmail.com" && request.auth.token.email_verified == true)
+        (request.auth.token.email.lower() == "georgeoughotmart@gmail.com" && request.auth.token.email_verified == true)
       );
     }
 
@@ -57,15 +56,16 @@ service cloud.firestore {
              data.totalNumeros >= 10 && 
              data.totalNumeros <= 1000 &&
              data.isSorteioIniciado is bool &&
-             (!('brinde' in data) || data.brinde is string) &&
-             (!('valor' in data) || data.valor is string) &&
-             (!('imagemBase64' in data) || data.imagemBase64 is string);
+             (!('brinde' in data) || (data.brinde is string && data.brinde.size() < 500)) &&
+             (!('valor' in data) || (data.valor is string && data.valor.size() < 100)) &&
+             (!('imagemBase64' in data) || (data.imagemBase64 is string && data.imagemBase64.size() < 800000));
     }
 
     function isValidState(data) {
       return (('sorteados' in data && data.sorteados is list) || !('sorteados' in data)) &&
-             (('ultimoSorteado' in data && data.ultimoSorteado is number) || !('ultimoSorteado' in data)) &&
-             (('takenNumbers' in data && data.takenNumbers is list) || !('takenNumbers' in data));
+             (('ultimoSorteado' in data && (data.ultimoSorteado is number || data.ultimoSorteado == null)) || !('ultimoSorteado' in data)) &&
+             (('takenNumbers' in data && data.takenNumbers is list) || !('takenNumbers' in data)) &&
+             (('countdown' in data && (data.countdown is number || data.countdown == null)) || !('countdown' in data));
     }
 
     function isValidReservation(data) {

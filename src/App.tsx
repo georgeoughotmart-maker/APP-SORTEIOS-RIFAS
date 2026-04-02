@@ -256,17 +256,24 @@ function RaffleApp() {
         imagemBase64,
         isSorteioIniciado: true
       }, { merge: true });
+      console.log("Configuração salva com sucesso.");
       
       // Only reset state if it's a completely new raffle (no taken numbers)
       // or if the admin explicitly wants to reset (we can add a separate reset button)
       if (!isSorteioIniciado) {
         console.log("Primeira inicialização do estado...");
-        await setDoc(doc(db, 'raffle', 'state'), {
-          sorteados: [],
-          ultimoSorteado: null,
-          takenNumbers: [],
-          countdown: null
-        }, { merge: true });
+        try {
+          await setDoc(doc(db, 'raffle', 'state'), {
+            sorteados: [],
+            ultimoSorteado: null,
+            takenNumbers: [],
+            countdown: null
+          }, { merge: true });
+          console.log("Estado inicializado com sucesso.");
+        } catch (stateError) {
+          console.error("Erro ao inicializar estado:", stateError);
+          handleFirestoreError(stateError, OperationType.WRITE, 'raffle/state');
+        }
       } else {
         console.log("Configurações atualizadas sem resetar o estado.");
       }
@@ -275,11 +282,15 @@ function RaffleApp() {
     } catch (error: any) {
       console.error("Erro ao iniciar sorteio:", error);
       try {
+        // If it's the state error we already handled it, but just in case
+        if (error.message && error.message.includes('raffle/state')) {
+          throw error;
+        }
         handleFirestoreError(error, OperationType.WRITE, 'raffle/config');
       } catch (e: any) {
         const errObj = JSON.parse(e.message);
-        setError(`Erro ao salvar config: ${errObj.error}`);
-        alert(`Erro ao salvar config: ${errObj.error}`);
+        setError(`Erro ao salvar: ${errObj.error} (Path: ${errObj.path})`);
+        alert(`Erro ao salvar: ${errObj.error} (Path: ${errObj.path})`);
       }
     }
   };
@@ -486,6 +497,7 @@ function RaffleApp() {
     if (!isAdmin) return;
     if (window.confirm("Tem certeza que deseja limpar todos os dados?")) {
       try {
+        setError(null);
         // Reset config and state
         await setDoc(doc(db, 'raffle', 'config'), {
           totalNumeros: 100,
@@ -494,22 +506,37 @@ function RaffleApp() {
           imagemBase64: '',
           isSorteioIniciado: false
         });
+        console.log("Config resetada.");
+
         await setDoc(doc(db, 'raffle', 'state'), {
           sorteados: [],
           ultimoSorteado: null,
           takenNumbers: [],
           countdown: null
         });
+        console.log("Estado resetado.");
 
         // Delete all reservations and winners (manual loop as Firestore doesn't have delete collection)
         for (const r of reservas) {
           await deleteDoc(doc(db, 'reservas', r.id));
         }
+        console.log("Reservas deletadas.");
+
         for (const g of ganhadores) {
           await deleteDoc(doc(db, 'ganhadores', g.id));
         }
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, 'raffle/cleanup');
+        console.log("Ganhadores deletados.");
+        
+        alert("Todos os dados foram limpos com sucesso!");
+      } catch (error: any) {
+        console.error("Erro ao limpar dados:", error);
+        try {
+          handleFirestoreError(error, OperationType.WRITE, 'raffle/cleanup');
+        } catch (e: any) {
+          const errObj = JSON.parse(e.message);
+          setError(`Erro ao limpar: ${errObj.error} (Path: ${errObj.path})`);
+          alert(`Erro ao limpar: ${errObj.error} (Path: ${errObj.path})`);
+        }
       }
     }
   };
